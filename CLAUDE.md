@@ -5,9 +5,11 @@ contributors.
 
 ## What this is
 
-A Gladys Assistant **external integration**: a Node.js service (Node 22+, ESM,
-no build step) that runs in its own sandboxed Docker container and talks to
-Gladys through
+A Gladys Assistant **external integration** for the HomeWizard Energy devices
+(P1 Meter, Energy Socket, kWh meters, Watermeter, Plug-In Battery), read over
+their official local API (v1 HTTP, v2 HTTPS with a token): a Node.js service
+(Node 22+, ESM, no build step) that runs in its own sandboxed Docker container
+and talks to Gladys through
 [`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js),
 its only runtime dependency. It started from the official JavaScript template.
 
@@ -31,16 +33,26 @@ pushing.
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
+index.js                          SDK wiring only (registerHandlers + shutdown)
+src/app.js                        every SDK handler, wired to the hub (the tests use it too)
+src/hub.js                        HomeWizardHub: discovery, polling, states, commands, pairing, triggers
+src/devices.js                    HomeWizard device -> Gladys device: features, names, values, commands
+src/discovery.js                  mDNS records relayed by the core -> devices to read
+src/homewizard/client.js          HTTP/HTTPS client of the local API v1/v2, certificate check, errors
+src/homewizard/model.js           product families, v1 -> v2 value names (python-homewizard-energy)
+src/homewizard/cacert.js          the HomeWizard CA (v2 device certificates)
+src/triggers.js                   grid power thresholds (scene triggers), re-arm margin
 src/scenes.js                     scene action handlers (manifest `scene_actions`)
 src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+src/texts.js                      connection status, action reports and errors, four languages
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
+src/store.js                      /data/homewizard-state.json (devices, tokens; atomic writes, mode 600)
 gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
+docs/{en,fr,de,es}.md             user documentation, re-hosted by Gladys (en and fr mandatory)
+test/                             node --test, against the SDK's fake Gladys and fake HomeWizard devices
+test/fixtures/homewizard/         real answers (python-homewizard-energy, Home Assistant), v1 and v2
+test/fixtures/tls/                TEST CA and device certificates (tests and fake device only)
+tools/fake-homewizard.mjs         a simulated HomeWizard device, v1 HTTP and v2 HTTPS (dev, tests, Docker)
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
 
@@ -70,8 +82,10 @@ test/                             node --test, against the SDK's fake Gladys (in
   `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
   code (defaults, action, scene and widget handlers): change both sides
   together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
+- **User-facing text** is in four languages (English, French, German with
+  "du", Spanish with "usted"): manifest texts, action and widget messages,
+  feature names, and `docs/{en,fr,de,es}.md` with the same sections.
+  `test/i18n.test.js` checks them.
 - **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
   in English. Tests never touch the network.
 
@@ -213,3 +227,71 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## HomeWizard (gladys-homewizard)
+
+**API locale** (références : python-homewizard-energy, Apache-2.0, l'intégration `homewizard` de Home
+Assistant, api-documentation.homewizard.com)
+
+- **v1** : HTTP port 80, sans authentification, à activer par appareil dans l'application
+  (« API locale »). `GET /api` (modèle, série, firmware), `GET /api/v1/data`, `GET`/`PUT
+/api/v1/state` (prise : `power_on`, `switch_lock`, `brightness` 0-255), `PUT /api/v1/identify`
+  (pas sur les compteurs kWh). API coupée : **403** sur tout, `/api` compris.
+- **v2** : HTTPS port 443, en-têtes `Authorization: Bearer <jeton>` et `X-Api-Version: 2`. Jeton :
+  `POST /api/user {"name":"local/gladys"}` répond 403 `user:creation-not-enabled` jusqu'à l'appui
+  sur le bouton, puis le jeton pendant 30 s (redemander avec le même nom remplace l'ancien). Sans
+  jeton, `GET /api` répond **401** : c'est le test « a une API v2 ». `GET /api/measurement`,
+  `GET /api/system` (`wifi_rssi_db`), `PUT /api/system/identify`.
+- **Certificat v2** : signé par la CA HomeWizard (« Appliance Access CA », auto-signée, valable
+  jusqu'en 2031, dans `src/homewizard/cacert.js`), nom commun `appliance/<id>/<série>` où `<id>`
+  n'est **pas** le type de produit (`p1dongle`, `energysocket`, `energymeter`, `watermeter`,
+  `battery`). Le nom d'hôte n'est jamais vérifié (c'est une IP) : `checkServerIdentity` compare le
+  CN au nom attendu. Le jeton n'est envoyé qu'après cette vérification (test « rogue »).
+- **v2 selon les produits** (doc officielle, octobre 2026) : P1, compteurs kWh, Plug-In Battery
+  (v2 seule). Energy Socket, Watermeter, Energy Display : v2 « en développement », v1 seule.
+- Les noms v1 et v2 diffèrent (`total_power_import_kwh` / `energy_import_kwh`…) :
+  `normalizeMeasurement` ramène tout aux noms v2. Vieux firmware P1 : pas de total, seulement
+  `_t1`/`_t2` (on additionne), gaz dans `total_gas_m3` au lieu de la liste `external`. Le courant
+  par phase du P1 est **signé** (sens) : publié en valeur absolue.
+- mDNS : `_hwenergy._tcp` (v1, TXT `api_enabled`, `serial`, `product_type`) et `_homewizard._tcp`
+  (v2, TXT `serial`, `product_type`, `id`). Un appareil annoncé seulement en v2 n'a peut-être pas
+  de v1 : ne pas l'y lire (`versionOf`). Watermeter sur piles : dort, ne répond pas.
+
+**Gladys**
+
+- Couples énergie choisis d'après le cœur v5.1.0/v5.2.0 (`ENERGY_INDEX_FEATURE_TYPES`,
+  `PRODUCTION_INDEX_FEATURE_TYPES`, `addEnergyFeatures`) : seuls `energy-sensor/index|energy`,
+  `switch/energy` (consommation) et `energy-production-sensor/index` (production) sont dérivés en
+  consommation/coût. Le P1 publie donc son index d'import total en `energy-sensor/index` ; les
+  index par tarif et l'export en `grid-sensor/*` (affichés, jamais recomptés). La puissance
+  importée du P1 est son `energy-sensor/power` : le cœur 5.2 y lit les pointes d'un compteur
+  (`getMeterPowerFeature`, tarifs à la puissance). L'export d'un compteur kWh est de la production.
+- `grid-sensor`, `battery-storage`, `volume-sensor`, `child-lock` existent dès la 5.1.0 :
+  `gladys_version >=5.1.0`.
+- Débit du Watermeter : seul `water-valve/flow` porte le libellé « Débit d'eau », en m³/h (pas
+  d'unité L/min dans Gladys) : ×0,06.
+- Rythme : `should_poll: false`, minuteur interne (2 s à 1 min, 10 s par défaut). Les fonctions
+  « lentes » (index, tensions, courants, gaz, eau, Wi-Fi, cycles) partent au plus une fois par
+  minute, plus un battement de 30 min (`publishChangedStates`) : un P1 triphasé lu toutes les 10 s
+  reste vers 25 états/minute.
+- Fonctionnalités : une clé n'apparaît que si l'appareil donne la valeur, et une clé vue une fois
+  est gardée (`mergeKeys`, `/data`) pour que la structure ne clignote pas ; un compteur de gaz qui
+  apparaît plus tard ajoute sa fonction (« Mettre à jour » dans Découverte).
+- Déclencheurs à seuil : une échelle fixe (100 W à 8 kW) en `select` obligatoire, un événement par
+  marche franchie vers le haut, réarmement à 10 % sous la marche (50 W minimum), rien à la première
+  lecture ni juste après une perte de contact (modèle de gladys-brother). Le cœur convertit les
+  valeurs d'événement selon le type du champ (`coerceSceneValue`) : un nombre convient pour un
+  `select` à valeurs texte.
+
+**Choix de conception**
+
+- Jumelage v2 par l'action « Jumeler » (fenêtre de 75 s, essai toutes les 2 s, `timeout_seconds` 90) : pas de champ secret dans une action (Gladys#3154). Une adresse saisie qui ne répond qu'en
+  v2 reste « non identifiée » jusqu'au jumelage, qui donne son numéro de série.
+- Un P1 avec v1 active est lu en v1 tant qu'il n'est pas jumelé ; une fois jumelé, en v2. Un jeton
+  refusé (401) est oublié et la v1 reprend si elle est active.
+- Injoignable après 3 lectures sans réponse : badge `unreachable`, statut de connexion ; les
+  valeurs restent.
+- Faux appareil : `tools/fake-homewizard.mjs` (v1 HTTP, v2 HTTPS avec certificats de test de
+  `test/fixtures/tls`, bouton). Les tests ouvrent de vrais serveurs sur 127.0.0.1 (ports libres).
+  Pour régénérer un certificat de test : `openssl req -newkey … -subj "/CN=appliance\/p1dongle\/…"`
+  (les `/` du CN s'échappent).
