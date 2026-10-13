@@ -1,147 +1,231 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "HomeWizard Energy",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "HomeWizard P1 Meter, Energy Socket, kWh meters, Watermeter and battery, read on the local network.",
+    "fr": "Compteur P1, prise, compteurs kWh, compteur d'eau et batterie HomeWizard, lus en réseau local.",
+    "de": "HomeWizard P1 Meter, Energy Socket, kWh-Zähler, Wasserzähler und Akku, im lokalen Netz gelesen.",
+    "es": "Medidor P1, enchufe, medidores kWh, contador de agua y batería HomeWizard, leídos en la red local."
   },
   "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "docker_image": "ghcr.io/guim31/gladys-homewizard:1.0.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/guim31/gladys-homewizard/main/cover.png",
+  "categories": ["energy"],
+  "transports": ["local"],
+  "network_discovery": [
+    {
+      "type": "mdns",
+      "service": "_hwenergy._tcp"
+    },
+    {
+      "type": "mdns",
+      "service": "_homewizard._tcp"
+    }
+  ],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Finding your HomeWizard devices",
+        "fr": "Trouver vos appareils HomeWizard",
+        "de": "Deine HomeWizard-Geräte finden",
+        "es": "Encontrar sus dispositivos HomeWizard"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Turn on \"Local API\" for each device in the HomeWizard Energy app, then open the Discovery tab: devices on the same network as Gladys are found automatically. Newer devices (P1 Meter, kWh meters, battery) also offer the secure API v2: run Pair and press their button.",
+        "fr": "Activez « API locale » pour chaque appareil dans l'application HomeWizard Energy, puis ouvrez l'onglet Découverte : les appareils du réseau de Gladys sont trouvés seuls. Les récents (P1, kWh, batterie) ont aussi l'API v2 sécurisée : lancez Jumeler et appuyez sur leur bouton.",
+        "de": "Aktiviere „Lokale API“ für jedes Gerät in der HomeWizard-Energy-App und öffne den Tab „Entdecken“: Geräte im Netz von Gladys werden automatisch gefunden. Neuere Geräte (P1, kWh, Akku) bieten auch die sichere API v2: Starte Koppeln und drück ihre Taste.",
+        "es": "Active «API local» para cada dispositivo en la aplicación HomeWizard Energy y abra la pestaña Descubrir: los dispositivos de la red de Gladys se encuentran solos. Los recientes (P1, kWh, batería) ofrecen la API v2 segura: inicie Vincular y pulse su botón."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://github.com/guim31/gladys-homewizard/blob/main/docs/en.md",
+          "label": {
+            "en": "Setup guide",
+            "fr": "Guide d'installation",
+            "de": "Installationsanleitung",
+            "es": "Guía de instalación"
+          }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
+      "key": "hosts",
+      "type": "string",
+      "label": {
+        "en": "IP addresses of HomeWizard devices",
+        "fr": "Adresses IP des appareils HomeWizard",
+        "de": "IP-Adressen der HomeWizard-Geräte",
+        "es": "Direcciones IP de los dispositivos HomeWizard"
       },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
-    },
-    {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
       "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
+        "en": "Optional, separated by commas. Only needed for the devices automatic discovery does not find.",
+        "fr": "Facultatif, séparées par des virgules. Seulement pour les appareils que la découverte automatique ne trouve pas.",
+        "de": "Optional, durch Kommas getrennt. Nur für Geräte nötig, die die automatische Erkennung nicht findet.",
+        "es": "Opcional, separadas por comas. Solo para los dispositivos que el descubrimiento automático no encuentra."
       },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
-    },
-    {
-      "key": "unit",
-      "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
+      "placeholder": {
+        "en": "e.g. 192.168.1.40, 192.168.1.41",
+        "fr": "ex. 192.168.1.40, 192.168.1.41",
+        "de": "z. B. 192.168.1.40, 192.168.1.41",
+        "es": "p. ej. 192.168.1.40, 192.168.1.41"
+      },
       "required": false,
-      "default": "celsius",
+      "default": ""
+    },
+    {
+      "key": "poll_interval",
+      "type": "select",
+      "label": {
+        "en": "Refresh interval",
+        "fr": "Intervalle d'actualisation",
+        "de": "Aktualisierungsintervall",
+        "es": "Intervalo de actualización"
+      },
+      "description": {
+        "en": "How often each device is read. Power values follow this pace; indexes, voltages and currents are sent to Gladys at most once a minute.",
+        "fr": "Fréquence de lecture de chaque appareil. Les puissances suivent ce rythme ; index, tensions et courants sont envoyés à Gladys au plus une fois par minute.",
+        "de": "Wie oft jedes Gerät gelesen wird. Leistungswerte folgen diesem Takt; Zählerstände, Spannungen und Ströme gehen höchstens einmal pro Minute an Gladys.",
+        "es": "Frecuencia de lectura de cada dispositivo. Las potencias siguen este ritmo; los índices, tensiones y corrientes se envían a Gladys como máximo una vez por minuto."
+      },
+      "required": false,
+      "default": "10",
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        {
+          "value": "2",
+          "label": {
+            "en": "2 seconds",
+            "fr": "2 secondes",
+            "de": "2 Sekunden",
+            "es": "2 segundos"
+          }
+        },
+        {
+          "value": "5",
+          "label": {
+            "en": "5 seconds",
+            "fr": "5 secondes",
+            "de": "5 Sekunden",
+            "es": "5 segundos"
+          }
+        },
+        {
+          "value": "10",
+          "label": {
+            "en": "10 seconds",
+            "fr": "10 secondes",
+            "de": "10 Sekunden",
+            "es": "10 segundos"
+          }
+        },
+        {
+          "value": "30",
+          "label": {
+            "en": "30 seconds",
+            "fr": "30 secondes",
+            "de": "30 Sekunden",
+            "es": "30 segundos"
+          }
+        },
+        {
+          "value": "60",
+          "label": {
+            "en": "1 minute",
+            "fr": "1 minute",
+            "de": "1 Minute",
+            "es": "1 minuto"
+          }
+        }
       ]
     },
     {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "key": "language",
+      "type": "select",
+      "label": {
+        "en": "Language of the feature names",
+        "fr": "Langue des noms de fonctionnalités",
+        "de": "Sprache der Funktionsnamen",
+        "es": "Idioma de los nombres de las funciones"
+      },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "Used for the names of new devices' features and for the messages of scene actions.",
+        "fr": "Utilisée pour les noms des fonctionnalités des nouveaux appareils et pour les messages des actions de scène.",
+        "de": "Wird für die Funktionsnamen neuer Geräte und für die Meldungen der Szenenaktionen verwendet.",
+        "es": "Se usa para los nombres de las funciones de los nuevos dispositivos y para los mensajes de las acciones de escena."
       },
       "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "default": "fr",
+      "options": [
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais",
+            "de": "Englisch",
+            "es": "Inglés"
+          }
+        },
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français",
+            "de": "Französisch",
+            "es": "Francés"
+          }
+        },
+        {
+          "value": "de",
+          "label": {
+            "en": "German",
+            "fr": "Allemand",
+            "de": "Deutsch",
+            "es": "Alemán"
+          }
+        },
+        {
+          "value": "es",
+          "label": {
+            "en": "Spanish",
+            "fr": "Espagnol",
+            "de": "Spanisch",
+            "es": "Español"
+          }
+        }
+      ]
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
-      "timeout_seconds": 30
+      "key": "search",
+      "label": {
+        "en": "Search for HomeWizard devices",
+        "fr": "Rechercher les appareils HomeWizard",
+        "de": "Nach HomeWizard-Geräten suchen",
+        "es": "Buscar dispositivos HomeWizard"
+      },
+      "timeout_seconds": 60
+    },
+    {
+      "key": "pair",
+      "label": {
+        "en": "Pair (API v2): press the device button",
+        "fr": "Jumeler (API v2) : appuyez sur le bouton",
+        "de": "Koppeln (API v2): Gerätetaste drücken",
+        "es": "Vincular (API v2): pulse el botón"
+      },
+      "timeout_seconds": 90
     },
     {
       "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
-    }
-  ],
-  "scene_triggers": [
-    {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
-      "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
-      },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
-        {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
-        }
-      ],
-      "variables": [
-        {
-          "key": "target",
-          "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
-        }
-      ]
-    }
-  ],
-  "scene_actions": [
-    {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
+      "label": {
+        "en": "Blink a device's light",
+        "fr": "Faire clignoter un appareil",
+        "de": "Geräteleuchte blinken lassen",
+        "es": "Hacer parpadear un dispositivo"
       },
       "timeout_seconds": 15,
       "fields": [
@@ -149,29 +233,503 @@
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
+          "label": {
+            "en": "Device",
+            "fr": "Appareil",
+            "de": "Gerät",
+            "es": "Dispositivo"
+          },
+          "required": true
+        }
+      ]
+    }
+  ],
+  "scene_triggers": [
+    {
+      "key": "grid_export_above",
+      "label": {
+        "en": "Home exports more than…",
+        "fr": "La maison réinjecte plus de…",
+        "de": "Das Haus speist mehr ein als…",
+        "es": "La casa exporta más de…"
+      },
+      "description": {
+        "en": "The power a P1 Meter sends to the grid rises above a threshold (solar surplus).",
+        "fr": "La puissance renvoyée au réseau par un compteur P1 dépasse un seuil (surplus solaire).",
+        "de": "Die Leistung, die ein P1 Meter ins Netz einspeist, steigt über eine Schwelle (Solarüberschuss).",
+        "es": "La potencia que un medidor P1 envía a la red supera un umbral (excedente solar)."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "P1 Meter",
+            "fr": "Compteur P1",
+            "de": "P1 Meter",
+            "es": "Medidor P1"
+          },
+          "required": false,
+          "description": {
+            "en": "Leave empty for any P1 Meter.",
+            "fr": "Laisser vide pour n'importe quel compteur P1.",
+            "de": "Leer lassen für ein beliebiges P1 Meter.",
+            "es": "Déjelo vacío para cualquier medidor P1."
+          }
+        },
+        {
+          "key": "threshold",
+          "type": "select",
+          "label": {
+            "en": "Exported power above",
+            "fr": "Puissance réinjectée au-delà de",
+            "de": "Einspeiseleistung über",
+            "es": "Potencia exportada por encima de"
+          },
+          "required": true,
+          "default": "500",
+          "options": [
+            {
+              "value": "100",
+              "label": {
+                "en": "100 W",
+                "fr": "100 W",
+                "de": "100 W",
+                "es": "100 W"
+              }
+            },
+            {
+              "value": "250",
+              "label": {
+                "en": "250 W",
+                "fr": "250 W",
+                "de": "250 W",
+                "es": "250 W"
+              }
+            },
+            {
+              "value": "500",
+              "label": {
+                "en": "500 W",
+                "fr": "500 W",
+                "de": "500 W",
+                "es": "500 W"
+              }
+            },
+            {
+              "value": "1000",
+              "label": {
+                "en": "1 kW",
+                "fr": "1 kW",
+                "de": "1 kW",
+                "es": "1 kW"
+              }
+            },
+            {
+              "value": "1500",
+              "label": {
+                "en": "1.5 kW",
+                "fr": "1,5 kW",
+                "de": "1,5 kW",
+                "es": "1,5 kW"
+              }
+            },
+            {
+              "value": "2000",
+              "label": {
+                "en": "2 kW",
+                "fr": "2 kW",
+                "de": "2 kW",
+                "es": "2 kW"
+              }
+            },
+            {
+              "value": "3000",
+              "label": {
+                "en": "3 kW",
+                "fr": "3 kW",
+                "de": "3 kW",
+                "es": "3 kW"
+              }
+            },
+            {
+              "value": "5000",
+              "label": {
+                "en": "5 kW",
+                "fr": "5 kW",
+                "de": "5 kW",
+                "es": "5 kW"
+              }
+            },
+            {
+              "value": "8000",
+              "label": {
+                "en": "8 kW",
+                "fr": "8 kW",
+                "de": "8 kW",
+                "es": "8 kW"
+              }
+            }
+          ]
+        }
+      ],
+      "variables": [
+        {
+          "key": "power",
+          "type": "number",
+          "label": {
+            "en": "Power (W)",
+            "fr": "Puissance (W)",
+            "de": "Leistung (W)",
+            "es": "Potencia (W)"
+          }
+        },
+        {
+          "key": "threshold",
+          "type": "number",
+          "label": {
+            "en": "Exported power above",
+            "fr": "Puissance réinjectée au-delà de",
+            "de": "Einspeiseleistung über",
+            "es": "Potencia exportada por encima de"
+          }
+        }
+      ]
+    },
+    {
+      "key": "grid_import_above",
+      "label": {
+        "en": "Home draws more than…",
+        "fr": "La maison consomme plus de…",
+        "de": "Das Haus bezieht mehr als…",
+        "es": "La casa consume más de…"
+      },
+      "description": {
+        "en": "The power a P1 Meter draws from the grid rises above a threshold.",
+        "fr": "La puissance tirée du réseau par un compteur P1 dépasse un seuil.",
+        "de": "Die Leistung, die ein P1 Meter aus dem Netz bezieht, steigt über eine Schwelle.",
+        "es": "La potencia que un medidor P1 toma de la red supera un umbral."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "P1 Meter",
+            "fr": "Compteur P1",
+            "de": "P1 Meter",
+            "es": "Medidor P1"
+          },
+          "required": false,
+          "description": {
+            "en": "Leave empty for any P1 Meter.",
+            "fr": "Laisser vide pour n'importe quel compteur P1.",
+            "de": "Leer lassen für ein beliebiges P1 Meter.",
+            "es": "Déjelo vacío para cualquier medidor P1."
+          }
+        },
+        {
+          "key": "threshold",
+          "type": "select",
+          "label": {
+            "en": "Imported power above",
+            "fr": "Puissance importée au-delà de",
+            "de": "Bezugsleistung über",
+            "es": "Potencia importada por encima de"
+          },
+          "required": true,
+          "default": "500",
+          "options": [
+            {
+              "value": "100",
+              "label": {
+                "en": "100 W",
+                "fr": "100 W",
+                "de": "100 W",
+                "es": "100 W"
+              }
+            },
+            {
+              "value": "250",
+              "label": {
+                "en": "250 W",
+                "fr": "250 W",
+                "de": "250 W",
+                "es": "250 W"
+              }
+            },
+            {
+              "value": "500",
+              "label": {
+                "en": "500 W",
+                "fr": "500 W",
+                "de": "500 W",
+                "es": "500 W"
+              }
+            },
+            {
+              "value": "1000",
+              "label": {
+                "en": "1 kW",
+                "fr": "1 kW",
+                "de": "1 kW",
+                "es": "1 kW"
+              }
+            },
+            {
+              "value": "1500",
+              "label": {
+                "en": "1.5 kW",
+                "fr": "1,5 kW",
+                "de": "1,5 kW",
+                "es": "1,5 kW"
+              }
+            },
+            {
+              "value": "2000",
+              "label": {
+                "en": "2 kW",
+                "fr": "2 kW",
+                "de": "2 kW",
+                "es": "2 kW"
+              }
+            },
+            {
+              "value": "3000",
+              "label": {
+                "en": "3 kW",
+                "fr": "3 kW",
+                "de": "3 kW",
+                "es": "3 kW"
+              }
+            },
+            {
+              "value": "5000",
+              "label": {
+                "en": "5 kW",
+                "fr": "5 kW",
+                "de": "5 kW",
+                "es": "5 kW"
+              }
+            },
+            {
+              "value": "8000",
+              "label": {
+                "en": "8 kW",
+                "fr": "8 kW",
+                "de": "8 kW",
+                "es": "8 kW"
+              }
+            }
+          ]
+        }
+      ],
+      "variables": [
+        {
+          "key": "power",
+          "type": "number",
+          "label": {
+            "en": "Power (W)",
+            "fr": "Puissance (W)",
+            "de": "Leistung (W)",
+            "es": "Potencia (W)"
+          }
+        },
+        {
+          "key": "threshold",
+          "type": "number",
+          "label": {
+            "en": "Imported power above",
+            "fr": "Puissance importée au-delà de",
+            "de": "Bezugsleistung über",
+            "es": "Potencia importada por encima de"
+          }
+        }
+      ]
+    }
+  ],
+  "scene_actions": [
+    {
+      "key": "turn_on_socket",
+      "label": {
+        "en": "Turn on a HomeWizard socket",
+        "fr": "Allumer une prise HomeWizard",
+        "de": "HomeWizard-Steckdose einschalten",
+        "es": "Encender un enchufe HomeWizard"
+      },
+      "description": {
+        "en": "Switch an Energy Socket on (refused while its switch lock is on).",
+        "fr": "Allume une Energy Socket (refusé tant que son verrouillage est actif).",
+        "de": "Schaltet eine Energy Socket ein (abgelehnt, solange ihre Tastensperre aktiv ist).",
+        "es": "Enciende un Energy Socket (rechazado mientras su bloqueo esté activo)."
+      },
+      "timeout_seconds": 15,
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Energy Socket",
+            "fr": "Prise Energy Socket",
+            "de": "Energy Socket",
+            "es": "Enchufe Energy Socket"
+          },
           "required": true
         }
       ],
       "outputs": [
         {
-          "key": "signalled",
+          "key": "power_on",
           "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
+          "label": {
+            "en": "Socket on",
+            "fr": "Prise allumée",
+            "de": "Steckdose an",
+            "es": "Enchufe encendido"
+          }
+        }
+      ]
+    },
+    {
+      "key": "turn_off_socket",
+      "label": {
+        "en": "Turn off a HomeWizard socket",
+        "fr": "Éteindre une prise HomeWizard",
+        "de": "HomeWizard-Steckdose ausschalten",
+        "es": "Apagar un enchufe HomeWizard"
+      },
+      "description": {
+        "en": "Switch an Energy Socket off (refused while its switch lock is on).",
+        "fr": "Éteint une Energy Socket (refusé tant que son verrouillage est actif).",
+        "de": "Schaltet eine Energy Socket aus (abgelehnt, solange ihre Tastensperre aktiv ist).",
+        "es": "Apaga un Energy Socket (rechazado mientras su bloqueo esté activo)."
+      },
+      "timeout_seconds": 15,
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Energy Socket",
+            "fr": "Prise Energy Socket",
+            "de": "Energy Socket",
+            "es": "Enchufe Energy Socket"
+          },
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "key": "power_on",
+          "type": "boolean",
+          "label": {
+            "en": "Socket on",
+            "fr": "Prise allumée",
+            "de": "Steckdose an",
+            "es": "Enchufe encendido"
+          }
+        }
+      ]
+    },
+    {
+      "key": "identify_device",
+      "label": {
+        "en": "Blink a HomeWizard device",
+        "fr": "Faire clignoter un appareil HomeWizard",
+        "de": "HomeWizard-Gerät blinken lassen",
+        "es": "Hacer parpadear un dispositivo HomeWizard"
+      },
+      "description": {
+        "en": "The status light of the device blinks for a few seconds (not on kWh meters in API v1).",
+        "fr": "Le voyant de l'appareil clignote quelques secondes (pas sur les compteurs kWh en API v1).",
+        "de": "Die Statusleuchte des Geräts blinkt einige Sekunden (nicht bei kWh-Zählern mit API v1).",
+        "es": "La luz de estado del dispositivo parpadea unos segundos (no en los medidores kWh con API v1)."
+      },
+      "timeout_seconds": 15,
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Device",
+            "fr": "Appareil",
+            "de": "Gerät",
+            "es": "Dispositivo"
+          },
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "key": "identified",
+          "type": "boolean",
+          "label": {
+            "en": "Light blinked",
+            "fr": "Voyant clignoté",
+            "de": "Leuchte geblinkt",
+            "es": "Luz parpadeada"
+          }
         }
       ]
     }
   ],
   "widgets": [
     {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
+      "key": "live_energy",
+      "label": {
+        "en": "Live energy",
+        "fr": "Énergie en direct",
+        "de": "Energie live",
+        "es": "Energía en directo"
       },
-      "icon": "activity",
-      "action_timeout_seconds": 15
+      "description": {
+        "en": "P1 Meter grid exchange as a gauge; solar production and house use with a kWh meter.",
+        "fr": "Échanges réseau du compteur P1 en jauge ; production solaire et maison avec un compteur kWh.",
+        "de": "Netzaustausch des P1 Meters als Anzeige; Solarertrag und Hausverbrauch mit kWh-Zähler.",
+        "es": "Intercambio de red del medidor P1 en indicador; solar y consumo de la casa con un medidor kWh."
+      },
+      "icon": "zap",
+      "settings": [
+        {
+          "key": "meter",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "P1 Meter",
+            "fr": "Compteur P1",
+            "de": "P1 Meter",
+            "es": "Medidor P1"
+          },
+          "description": {
+            "en": "Empty: the first P1 Meter found.",
+            "fr": "Vide : le premier compteur P1 trouvé.",
+            "de": "Leer: das erste gefundene P1 Meter.",
+            "es": "Vacío: el primer medidor P1 encontrado."
+          }
+        },
+        {
+          "key": "solar",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Solar kWh meter (optional)",
+            "fr": "Compteur kWh solaire (facultatif)",
+            "de": "Solar-kWh-Zähler (optional)",
+            "es": "Medidor kWh solar (opcional)"
+          },
+          "description": {
+            "en": "The kWh meter (or Energy Socket) measuring your solar panels.",
+            "fr": "Le compteur kWh (ou la prise) qui mesure vos panneaux solaires.",
+            "de": "Der kWh-Zähler (oder die Steckdose), der deine Solarmodule misst.",
+            "es": "El medidor kWh (o el enchufe) que mide sus paneles solares."
+          }
+        }
+      ]
     }
   ]
 }

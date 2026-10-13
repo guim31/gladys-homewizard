@@ -1,61 +1,202 @@
-# Demo Devices Template
+# HomeWizard Energy
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+Read your [HomeWizard Energy](https://www.homewizard.com) devices in Gladys,
+over your local network: the **P1 Meter** plugged into the P1 port of a smart
+electricity meter (DSMR, Netherlands, Belgium, Luxembourg…), the **Energy
+Socket**, the **kWh meters** (one and three phases, Eastron SDM230 and SDM630
+included), the **Watermeter** and the **Plug-In Battery**. Power, meter
+indexes, voltages, gas and water, ready for the energy tab of Gladys, with a
+dashboard widget, two scene triggers and three scene actions. No account and
+no cloud: Gladys reads each device directly, through the official local API
+of HomeWizard.
 
-## What you get
+> **Developed without the hardware: feedback welcome.** This integration was
+> built and tested against real answers of HomeWizard devices recorded by the
+> python-homewizard-energy and Home Assistant projects, and against simulated
+> devices (API v1 and v2), not against a real meter. If something does not
+> work as described, please say so on the
+> [Gladys forum](https://community.gladysassistant.com) or in the
+> [issues](https://github.com/guim31/gladys-homewizard/issues).
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+## What you need
 
-## Configuration
+- Gladys Assistant 5.1.0 or later.
+- HomeWizard devices set up in the **HomeWizard Energy app**, on the same
+  network as Gladys.
+- For each device, the **local API**:
+  - **API v1** (every model except the Plug-In Battery): in the HomeWizard
+    Energy app, **Settings** → **Meters** → your device → **Local API**,
+    turned on.
+  - **API v2** (P1 Meter, kWh meters and Plug-In Battery with a recent
+    firmware): secure (HTTPS), nothing to turn on in the app, but you pair
+    each device once by pressing its button (see below). The Plug-In Battery
+    only has this one.
+- Nothing else: no HomeWizard account, no key, no internet access.
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+## Set up
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+1. Install the integration from the Gladys catalog.
+2. Open its **Configuration**. Nothing is required; the options are:
+   - **IP addresses of HomeWizard devices**: only for the devices automatic
+     discovery does not find, separated by commas (for example
+     `192.168.1.40, 192.168.1.41`). Your router lists the address of each
+     device. Names ending in `.local` do not work here: use the address.
+   - **Refresh interval**: how often each device is read, from 2 seconds to 1
+     minute (10 seconds by default). Powers follow this pace; indexes,
+     voltages, currents, gas and water are sent to Gladys at most once a
+     minute, which is plenty for the energy tab and keeps Gladys light.
+   - **Language of the feature names**: English, French, German or Spanish
+     (French by default). The names of the features are given when a device
+     is added, and the messages of the scene actions use this language.
+3. Open the **Discovery** tab of the integration: the devices found are
+   listed. Add the ones you want.
+4. To use the **API v2** (recommended on the devices that offer it, and the
+   only way for the Plug-In Battery): click
+   **Pair (API v2): press the device button**, then, within the next 75
+   seconds, press the button of each device to pair (on a kWh meter, the Wi-Fi pairing button, 1 to 3 seconds,
+   not longer). The message under the button lists the devices paired. A
+   P1 Meter with its API v1 turned on is read through v1 until it is paired.
 
-## Actions
+The **Search for HomeWizard devices** action runs a new search and lists
+what was found, the API used for each device and what blocks the others
+(local API off, pairing needed, device not answering). The **Blink a
+device's light** action makes the status light of a device blink for a few
+seconds, to find it among identical ones.
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+## The Gladys devices
+
+One Gladys device per HomeWizard device, named after its model and the end of
+its serial number (`HomeWizard P1 Meter aabbcc`). Only what the device
+reports is published: a single-phase meter has no L2 and L3, a meter with one
+tariff no tariff index, a P1 Meter without gas meter no gas.
+
+**P1 Meter**
+
+- **Imported power** and **Exported power** (W): what the house draws from
+  the grid and sends back to it, never negative.
+- **Import index** (kWh): the total imported energy. This is the one the
+  energy tab of Gladys turns into consumption and cost; the imported power
+  is kept for the power peaks some contracts are billed on.
+- **Export index** (kWh): the total energy sent to the grid.
+- **Import index T1**… **T4** and **Export index T1**… **T4** (kWh): per
+  tariff (day/night), when the meter has several.
+- **Voltage L1**… **L3** (V) and **Current L1**… **L3** (A), per phase, when
+  the meter reports them. The current is given without sign: its size.
+- **Gas** and **Water** (m³): the gas and water meters connected to the
+  smart meter, read every hour or so by the meter itself.
+- **Wi-Fi signal** (%).
+
+**Energy Socket**
+
+- **On/Off**: the relay, controllable.
+- **Power** (W), **Energy index** (kWh: the consumption the energy tab
+  uses), and on recent sockets **Voltage** (V) and **Current** (A).
+- **Switch lock**: on, the button of the socket and Gladys can no longer
+  switch it off (a freezer, a router). Controllable.
+- **LED brightness** (0 to 100 %): the light ring of the socket.
+- **Wi-Fi signal** (%).
+
+**kWh meters** (HWE-KWH1, HWE-KWH3, SDM230, SDM630)
+
+- **Power** (W, negative when the circuit sends energy back, a solar
+  inverter for example) and, on three-phase meters, **Power L1**… **L3**.
+- **Import index** (kWh, consumption in the energy tab) and **Export index**
+  (kWh, counted as production by Gladys: a kWh meter on a solar inverter).
+- **Voltage** and **Current**, or **Voltage L1**… **L3** and **Current L1**…
+  **L3** on three-phase meters. **Wi-Fi signal** (%).
+
+**Watermeter**
+
+- **Water flow** (m³/h: 1 L/min is 0.06 m³/h) and **Water total** (m³).
+- **Wi-Fi signal** (%). The Watermeter only answers on USB power: on
+  batteries it sleeps and Gladys cannot read it.
+
+**Plug-In Battery** (API v2 only)
+
+- **Battery level** (%), **Charge power** and **Discharge power** (W),
+  **Charged energy** and **Discharged energy** (kWh), **Cycles**, **Wi-Fi
+  signal** (%).
+
+A device that does not answer three readings in a row shows the
+"unreachable" badge in Gladys; its last values stay.
+
+## Dashboard widget
+
+**Live energy** shows the grid exchange of a P1 Meter:
+
+- a **Grid** gauge, signed: to the right when the house draws power, to the
+  left (green) when it sends power back;
+- **Import** and **Export** tiles, live;
+- with a solar kWh meter chosen in the widget settings: **Solar** (the
+  production measured by that meter) and **House** (what the house
+  consumes: import − export + production);
+- the current tariff, the gas index, and whether the meters answer.
+
+Settings: the P1 Meter (empty: the first one found) and, optionally, the kWh
+meter (or Energy Socket) measuring your solar panels.
 
 ## Scenes
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+### Triggers
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+- **Home exports more than…**: the power a P1 Meter sends to the grid rises
+  above a threshold, chosen from 100 W to 8 kW. Typical use: the solar panels
+  produce more than the house uses.
+- **Home draws more than…**: the power a P1 Meter draws from the grid rises
+  above a threshold.
 
-## Dashboard
+Each trigger fires once when the power goes above the threshold, and again
+only after it went back below it by 10 % (50 W at least), so a power
+wobbling around the threshold does not repeat it. Nothing fires right after
+Gladys or the integration starts. The scene can read the **Power (W)** and
+the threshold reached. To act when the power goes back down, use the
+**Imported power** or **Exported power** feature in a "device state" trigger.
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+### Actions
+
+- **Turn on a HomeWizard socket** and **Turn off a HomeWizard socket**: they
+  return whether the socket is on. Refused, with a message, while its switch
+  lock is on.
+- **Blink a HomeWizard device**: the status light blinks for a few seconds
+  (not on kWh meters read through the API v1).
+
+### Scene ideas
+
+- **Solar surplus**: "Home exports more than… 1.5 kW" → turn on the Energy
+  Socket of the water heater or of the car charger; "Exported power" below
+  200 W for 10 minutes → turn it off.
+- **Avoid a power peak**: "Home draws more than… 5 kW" → turn off a
+  non-essential socket and send a message.
+- **Find a device**: in a scene started from the dashboard, "Blink a
+  HomeWizard device".
 
 ## Troubleshooting
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+- **A device is missing from the Discovery tab**: run **Search for
+  HomeWizard devices** and read the message. "Local API off in the app":
+  turn it on in the HomeWizard Energy app. "Press its button after Pair": the
+  device only offers the API v2, pair it. Not found at all: the devices
+  are found through the Gladys core (mDNS), on the same network only; enter
+  its IP address in the configuration.
+- **"Token refused, pair it again"**: the token of the integration was
+  removed (device reset, user list cleared in the app). Run the pairing again.
+- **"Certificate refused"**: the device at this address does not prove it
+  is the expected HomeWizard device; Gladys sends it nothing. Check the
+  address (a DHCP change?) and run a search.
+- **The Watermeter does not answer**: it must be powered over USB.
+- **The values seem late**: indexes, voltages and gas are sent once a
+  minute; the gas meter itself updates every hour or so.
+
+## Limits
+
+- Polling only (no push): powers are as fresh as the refresh interval.
+- The battery modes (zero, to full, standby) and the cloud settings of the
+  devices are not controlled; the Energy Display is not supported.
+- The Energy Socket and the Watermeter are read through the API v1 (their
+  API v2 is still in development at HomeWizard).
+- The external meters of a P1 Meter: one gas meter and one water meter;
+  heat meters are not read.
+- Developed without the hardware (see above).
+
+HomeWizard is a trademark of HomeWizard B.V. This integration is not
+affiliated with HomeWizard.
