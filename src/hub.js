@@ -32,7 +32,7 @@ import {
   getSystem,
   hasV2Api,
   identify,
-  requestToken,
+  requestPairing,
   setState,
 } from './homewizard/client.js';
 import {
@@ -65,6 +65,10 @@ export const HUB_TIMINGS = {
   pairRetryMs: 2_000,
   // The widget shows computed values (net power, house): nudge it at most this often.
   widgetNudgeMs: 10_000,
+  // States a minute for all the devices, under the 300 Gladys accepts.
+  stateBudget: 240,
+  // A device whose local API v1 answered 403 is asked again this often.
+  v1RetryMs: 5 * 60_000,
 };
 
 const PROBE_CONCURRENCY = 6;
@@ -100,6 +104,9 @@ export class HomeWizardHub {
     this.pairing = null;
     this.lastScan = { status: 'not-run', found: 0 };
     this.lastWidgetNudge = 0;
+    this.devicesDirty = false;
+    // States sent in the last minute, for the budget: `[{ at, count }]`.
+    this.spent = [];
     this.stopped = false;
   }
 
@@ -107,14 +114,19 @@ export class HomeWizardHub {
 
   async start(config) {
     this.config = config;
-    await this.restore();
-    await this.discover();
-    await this.publishDevices();
-    await this.publishAllStates();
-    await this.publishTransports();
-    await this.publishConnectionStatus();
-    this.requestWidgetRefresh(true);
-    this.startTimers();
+    try {
+      await this.restore();
+      await this.discover();
+      await this.publishDevices();
+      await this.publishAllStates();
+      await this.publishTransports();
+      await this.publishConnectionStatus();
+      this.requestWidgetRefresh(true);
+    } finally {
+      // Even after a failed publication: the readings and the next
+      // reconnection (resync) put Gladys right.
+      this.startTimers();
+    }
   }
 
   /** Gladys came back (restart, network): it may have lost what was published. */
@@ -122,13 +134,16 @@ export class HomeWizardHub {
     this.config = config;
     this.gladys.forgetPublishedStates();
     for (const record of this.records.values()) {
-      record.slowPublished = {};
+      record.sent = {};
     }
     await this.publishDevices();
     await this.publishAllStates();
     await this.publishTransports();
     await this.publishConnectionStatus();
     this.requestWidgetRefresh(true);
+    if (!this.pollTimer) {
+      this.startTimers();
+    }
   }
 
   async reconfigure(config) {
@@ -254,8 +269,10 @@ export class HomeWizardHub {
       problem: null,
       // Bumped on every command: a reading started before it is stale.
       commandSeq: 0,
-      // When each slow feature was last sent.
-      slowPublished: {},
+      // Last value sent per feature key: `{ value, at }`.
+      sent: {},
+      // When a v1 API answering 403 may be asked again.
+      v1RetryAt: 0,
       // Trigger steps fired and not re-armed, per direction (undefined: first reading).
       fired: { import: undefined, export: undefined },
       queue: Promise.resolve(),
@@ -438,10 +455,13 @@ export class HomeWizardHub {
   }
 
   async publishDevices() {
+    // Set again if this publication fails: the next readings retry it.
+    this.devicesDirty = true;
     const devices = this.publishable().map((record) =>
       buildDevice(this.gladys, record, this.config.language),
     );
     await this.gladys.publishDiscoveredDevices(devices);
+    this.devicesDirty = false;
   }
 
   /** The record behind a Gladys device external id, or null. */
@@ -479,9 +499,12 @@ export class HomeWizardHub {
   // --- States ----------------------------------------------------------------
 
   /**
-   * Publish what changed for one device, if the user created it (Gladys caps
-   * states at 300 a minute and re-evaluates scenes on each one). Slow
-   * features go at most once a minute. Resolves with the keys sent.
+   * Publish what changed for one device, if the user created it. Gladys caps
+   * an integration at 300 states a minute and re-evaluates the scenes on each
+   * one: unchanged values wait for the heartbeat, slow features go at most
+   * once a minute, and a budget shared by all the devices (STATE_BUDGET a
+   * minute) holds back what does not fit, until the next reading. Resolves
+   * with the keys sent.
    */
   async publishStates(record, { force = false } = {}) {
     if (!this.isCreated(record)) {
@@ -491,30 +514,52 @@ export class HomeWizardHub {
     const ids = deviceIds(this.gladys, family, record.serial);
     const values = deviceValues(record);
     const now = Date.now();
-    const states = [];
-    const sent = [];
+    const slow = [];
+    const fast = [];
     for (const key of record.keys) {
       const value = values[key];
       if (value === undefined) {
         continue;
       }
-      if (isSlow(family, key) && !force) {
-        const last = record.slowPublished[key];
-        if (last !== undefined && now - last < this.timings.slowPublishMs) {
+      const last = record.sent[key];
+      if (!force && last) {
+        if (last.value === value && now - last.at < this.timings.heartbeatMs) {
+          continue;
+        }
+        if (isSlow(family, key) && now - last.at < this.timings.slowPublishMs) {
           continue;
         }
       }
-      if (isSlow(family, key)) {
-        record.slowPublished[key] = now;
-      }
-      states.push({ device_feature_external_id: ids.feature(key), state: value });
-      sent.push(key);
+      (isSlow(family, key) ? slow : fast).push(key);
     }
-    if (states.length > 0) {
-      // The SDK sends only the values that changed since its last publication.
-      await this.gladys.publishChangedStates(states, { heartbeat: this.timings.heartbeatMs });
+    // Slow values first: they are rare, and a fast one comes back at the next reading.
+    const candidates = [...slow, ...fast];
+    const keys = force ? candidates : candidates.slice(0, this.budgetLeft(now));
+    if (keys.length < candidates.length) {
+      logger.debug(
+        `State budget reached: ${candidates.length - keys.length} value(s) of ${record.serial} wait`,
+      );
     }
-    return sent;
+    if (keys.length === 0) {
+      return [];
+    }
+    // The SDK keeps its own copy of what it sent (forgotten on a device creation).
+    await this.gladys.publishChangedStates(
+      keys.map((key) => ({ device_feature_external_id: ids.feature(key), state: values[key] })),
+      { heartbeat: this.timings.heartbeatMs },
+    );
+    for (const key of keys) {
+      record.sent[key] = { value: values[key], at: now };
+    }
+    this.spent.push({ at: now, count: keys.length });
+    return keys;
+  }
+
+  /** States still allowed in the last minute. */
+  budgetLeft(now) {
+    this.spent = this.spent.filter((entry) => now - entry.at < 60_000);
+    const used = this.spent.reduce((total, entry) => total + entry.count, 0);
+    return Math.max(this.timings.stateBudget - used, 0);
   }
 
   async publishAllStates() {
@@ -537,7 +582,7 @@ export class HomeWizardHub {
       return;
     }
     this.gladys.forgetPublishedStates(device.external_id);
-    record.slowPublished = {};
+    record.sent = {};
     await this.publishStates(record, { force: true });
     await this.publishTransports([record]);
     this.requestWidgetRefresh(true);
@@ -587,9 +632,16 @@ export class HomeWizardHub {
   pollAll() {
     this.polling ??= mapLimit([...this.records.values()], POLL_CONCURRENCY, (record) =>
       this.refresh(record),
-    ).finally(() => {
-      this.polling = null;
-    });
+    )
+      .then(async () => {
+        if (this.devicesDirty) {
+          // A new structure Gladys did not get (a failed publication).
+          await this.publishDevices();
+        }
+      })
+      .finally(() => {
+        this.polling = null;
+      });
     return this.polling;
   }
 
@@ -599,7 +651,10 @@ export class HomeWizardHub {
   }
 
   async read(record) {
-    const version = this.versionOf(record);
+    let version = this.versionOf(record);
+    if (version === null && (await this.v1TurnedBackOn(record))) {
+      version = 1;
+    }
     if (version === null) {
       await this.setProblem(record, record.v2Capable ? 'pairing' : 'disabled');
       return;
@@ -641,10 +696,34 @@ export class HomeWizardHub {
     await this.applyReading(record, { raw, state, wifi, version });
   }
 
+  /**
+   * A v1 API seen off (403) is asked again every few minutes: the user may
+   * have turned it back on in the app, and nothing else would tell (a typed
+   * address gets no mDNS announcement).
+   */
+  async v1TurnedBackOn(record) {
+    if (record.v1Enabled !== false || familyOf(record.productType) === 'battery') {
+      return false;
+    }
+    if (Date.now() < record.v1RetryAt) {
+      return false;
+    }
+    record.v1RetryAt = Date.now() + this.timings.v1RetryMs;
+    try {
+      await getDeviceInfo(this.target(record, 1));
+    } catch {
+      return false;
+    }
+    record.v1Enabled = true;
+    this.track(this.save());
+    return true;
+  }
+
   async readFailed(record, version, err) {
     switch (err.kind) {
       case 'disabled':
         record.v1Enabled = false;
+        record.v1RetryAt = Date.now() + this.timings.v1RetryMs;
         await this.setProblem(record, record.v2Capable ? 'pairing' : 'disabled');
         this.track(this.save());
         return;
@@ -671,6 +750,8 @@ export class HomeWizardHub {
       return;
     }
     record.problem = problem;
+    // Its power is unknown meanwhile: no crossing from a stale value later.
+    record.fired = { import: undefined, export: undefined };
     const wasReachable = record.reachable;
     record.reachable = false;
     if (wasReachable !== false) {
@@ -906,18 +987,29 @@ export class HomeWizardHub {
     };
   }
 
-  /** One token request; resolves with the device name once paired, null before. */
+  /** One token request; resolves with the device name once paired, throws before. */
   async tryPair({ address, record }) {
-    const identity = record ? certificateName(record.productType, record.serial) : undefined;
-    const target = this.targetFor(address, 2, { v2Port: record?.v2Port, identity });
-    const token = await requestToken(target);
+    const expected = record ? certificateName(record.productType, record.serial) : undefined;
+    const target = this.targetFor(address, 2, { v2Port: record?.v2Port, identity: expected });
+    const pairing = await requestPairing(target);
+    const { token } = pairing;
+    const identity = pairing.identity?.toLowerCase();
     let paired = record;
     if (!paired) {
-      // A typed address: the token tells who it is.
-      const info = await getDeviceInfo({ ...target, token });
+      // A typed address: the certificate says which device gave the token
+      // (checked against the HomeWizard CA); the identification must be that
+      // same device, over a connection held to the same name.
+      if (!/^appliance\/[a-z0-9]+\/[0-9a-f]{12}$/.test(identity ?? '')) {
+        throw new HomeWizardError(`${address}: certificate without a device name`, { kind: 'tls' });
+      }
+      const info = await getDeviceInfo({ ...target, token, identity });
       const serial = normalizeSerial(info?.serial);
-      if (!serial || !familyOf(info?.product_type)) {
-        throw new HomeWizardError(`${address} is not a HomeWizard device this integration knows`, {
+      if (
+        !serial ||
+        !familyOf(info?.product_type) ||
+        certificateName(info.product_type, serial) !== identity
+      ) {
+        throw new HomeWizardError(`${address} is not the HomeWizard device its certificate names`, {
           kind: 'invalid',
         });
       }
@@ -934,8 +1026,14 @@ export class HomeWizardHub {
     paired.token = token;
     paired.v2Capable = true;
     paired.problem = null;
+    // Kept at once: the token is good whatever happens next.
+    this.track(this.save());
     logger.info(`HomeWizard ${paired.serial} paired (local API v2)`);
-    await this.refresh(paired);
+    try {
+      await this.refresh(paired);
+    } catch (err) {
+      logger.warn(`First v2 reading of ${paired.serial} failed: ${err.message}`);
+    }
     return deviceName(paired);
   }
 

@@ -291,7 +291,37 @@ Assistant, api-documentation.homewizard.com)
   refusé (401) est oublié et la v1 reprend si elle est active.
 - Injoignable après 3 lectures sans réponse : badge `unreachable`, statut de connexion ; les
   valeurs restent.
+- **Budget d'états** commun à tous les appareils : 240 par minute (`stateBudget`), les valeurs
+  lentes d'abord, les puissances qui ne tiennent pas attendent la lecture suivante ; la création
+  d'un appareil et la resynchronisation passent outre. Le dédoublonnage et le battement de 30 min
+  sont faits par le hub (`record.sent`) en plus du SDK, pour savoir combien d'états partent vraiment.
+- Une v1 vue coupée (403) est redemandée toutes les 5 min (`v1TurnedBackOn`) : une adresse saisie
+  n'a pas d'annonce mDNS pour dire qu'elle est revenue.
+- Jumelage d'une adresse saisie (numéro de série inconnu) : le nom du certificat qui a donné le
+  jeton devient l'identité exigée pour la suite, et `/api` doit annoncer ce même appareil.
+- Les minuteurs démarrent même si une publication échoue au démarrage (`start`, `finally`) ; une
+  structure que Gladys n'a pas reçue est republiée après la lecture suivante (`devicesDirty`).
 - Faux appareil : `tools/fake-homewizard.mjs` (v1 HTTP, v2 HTTPS avec certificats de test de
   `test/fixtures/tls`, bouton). Les tests ouvrent de vrais serveurs sur 127.0.0.1 (ports libres).
   Pour régénérer un certificat de test : `openssl req -newkey … -subj "/CN=appliance\/p1dongle\/…"`
   (les `/` du CN s'échappent).
+
+**Vérification Docker** (faite le 13/10/2026, à refaire après un changement du client ou du hub)
+
+```bash
+sg docker -c 'docker build -t gladys-test-homewizard:dev .'
+sg docker -c 'docker network create gladys-test-homewizard'
+sg docker -c 'docker run -d --name gladys-test-homewizard-fake --network gladys-test-homewizard \
+  -v $PWD/tools:/fake/tools:ro -v $PWD/test/fixtures:/fake/test/fixtures:ro -w /fake \
+  public.ecr.aws/docker/library/node:24-alpine \
+  node tools/fake-homewizard.mjs --model HWE-P1 --api both --serial 5c2fafa00001 --tls p1'
+sg docker -c 'docker run --rm --network gladys-test-homewizard --cap-drop ALL \
+  --security-opt no-new-privileges --read-only --memory 256m --pids-limit 256 \
+  -v gladys-test-homewizard-data:/data \
+  -v $PWD/tools/docker-check.mjs:/app/tools/docker-check.mjs:ro \
+  -v $PWD/test/fixtures/tls/test-ca.pem:/app/tools/test-ca.pem:ro \
+  -e FAKE_HOST=<IP du faux> gladys-test-homewizard:dev node tools/docker-check.mjs'
+```
+
+Puis tout supprimer (`docker rm -f`, `docker network rm`, `docker volume rm`, `docker rmi`). Le faux
+tourne en root (ports 80 et 443, comme un vrai appareil) ; l'intégration, elle, dans le bac à sable.

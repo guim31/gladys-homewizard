@@ -120,7 +120,7 @@ export function homewizardRequest(target, { path, method = 'GET', body, timeoutM
       // device must have, once the chain is proven to come from HomeWizard.
       options.checkServerIdentity = (_host, certificate) => {
         const name = certificate?.subject?.CN;
-        if (target.identity && name !== target.identity) {
+        if (target.identity && String(name).toLowerCase() !== target.identity.toLowerCase()) {
           return new Error(`certificate of ${name ?? 'an unknown device'}, not ${target.identity}`);
         }
         return undefined;
@@ -132,6 +132,8 @@ export function homewizardRequest(target, { path, method = 'GET', body, timeoutM
 
   return new Promise((resolve, reject) => {
     const req = (v2 ? https : http).request(options, (res) => {
+      // The name in the certificate (v2), read while the socket is open.
+      const peer = v2 ? res.socket?.getPeerCertificate?.()?.subject?.CN : undefined;
       const chunks = [];
       let size = 0;
       res.on('data', (chunk) => {
@@ -158,7 +160,7 @@ export function homewizardRequest(target, { path, method = 'GET', body, timeoutM
           if (parsed === undefined) {
             reject(new HomeWizardError(`${where}: not a JSON answer`, { kind: 'invalid', status }));
           } else {
-            resolve({ status, body: parsed });
+            resolve({ status, body: parsed, peer: typeof peer === 'string' ? peer : undefined });
           }
           return;
         }
@@ -285,7 +287,16 @@ export async function identify(target) {
  * @returns {Promise<string>} the token (32 hexadecimal characters)
  */
 export async function requestToken(target) {
-  const { body } = await homewizardRequest(
+  return (await requestPairing(target)).token;
+}
+
+/**
+ * v2: ask for a token, and say which device gave it: `{ token, identity }`,
+ * `identity` being the certificate name of the device that answered
+ * (`appliance/<id>/<serial>`), checked against the HomeWizard CA.
+ */
+export async function requestPairing(target) {
+  const { body, peer } = await homewizardRequest(
     { ...target, version: 2, token: undefined },
     { path: '/api/user', method: 'POST', body: { name: TOKEN_USER_NAME } },
   );
@@ -293,5 +304,5 @@ export async function requestToken(target) {
   if (typeof token !== 'string' || !/^[A-Fa-f0-9]{16,64}$/.test(token)) {
     throw new HomeWizardError(`${target.address}: no token in the answer`, { kind: 'invalid' });
   }
-  return token;
+  return { token, identity: peer };
 }

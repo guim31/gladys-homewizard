@@ -402,3 +402,111 @@ test('a reconnection re-sends everything Gladys may have lost', async (t) => {
   await world.hub.resync(world.hub.config);
   assert.ok(world.fake.states.length > sent);
 });
+
+// --- Fixes of the independent review ------------------------------------------
+
+test('a failed publication at startup still starts the readings', async (t) => {
+  const meter = await p1v1();
+  const world = await createWorld({ devices: [meter], connect: false });
+  t.after(() => world.stop());
+  world.hub.timersEnabled = true;
+  world.hub.publishAllStates = async () => {
+    throw new Error('HTTP 503');
+  };
+  await world.gladys.connect();
+  await world.app.ready;
+  assert.match(world.fake.connectionStatus.message.en, /Initialization failed/);
+  assert.notEqual(world.hub.pollTimer, null, 'the poll timer runs');
+});
+
+test('a local API v1 turned back on in the app is noticed', async (t) => {
+  const plug = await socket();
+  const world = await createWorld({
+    devices: [plug],
+    scan: false,
+    config: { language: 'en', hosts: '127.0.0.1' },
+    ports: { v1: plug.v1Port, v2: 1 },
+    timings: { v1RetryMs: 0 },
+  });
+  t.after(() => world.stop());
+  const record = world.hub.records.get(SERIALS.SOCKET);
+  plug.v1Enabled = false;
+  await world.hub.pollAll();
+  assert.equal(record.problem, 'disabled');
+  await world.hub.pollAll();
+  assert.equal(record.problem, 'disabled');
+  plug.v1Enabled = true;
+  await world.hub.pollAll();
+  assert.equal(record.reachable, true);
+  assert.equal(record.v1Enabled, true);
+});
+
+test('the states stay under a budget shared by every device', async (t) => {
+  const meter = await p1v1();
+  const world = await createWorld({ devices: [meter], timings: { stateBudget: 22 } });
+  t.after(() => world.stop());
+  await createAll(world); // the creation sends everything (21 values)
+  const sent = world.fake.states.length;
+  meter.setPower(2000);
+  await world.hub.pollAll();
+  // One state left in the minute: the import and export powers do not both fit.
+  assert.equal(world.fake.states.length - sent, 1);
+  world.hub.spent = [];
+  await world.hub.pollAll();
+  assert.equal(stateOf(world, 'p1', SERIALS.P1, 'power-import'), 2000);
+});
+
+test('a typed address is only paired with the device its certificate names', async (t) => {
+  // A battery claiming another serial than the one in its certificate.
+  const liar = await fake({
+    model: 'HWE-BAT',
+    serial: '5c2fafa00099',
+    v1: false,
+    v2: loadTls('battery'),
+  });
+  const world = await createWorld({
+    devices: [liar],
+    scan: false,
+    config: { language: 'en', hosts: '127.0.0.1' },
+    ports: { v1: 1, v2: liar.v2Port },
+  });
+  t.after(() => world.stop());
+  const ack = await pairAll(world);
+  assert.match(ack.data.message.en, /No button pressed on: 127\.0\.0\.1/);
+  assert.equal(world.hub.records.size, 0);
+});
+
+test('a token is kept even when the first reading after the pairing fails', async (t) => {
+  const meter = await p1v2({ v1: false });
+  const world = await createWorld({ devices: [meter] });
+  t.after(() => world.stop());
+  const refresh = world.hub.refresh.bind(world.hub);
+  world.hub.refresh = async () => {
+    world.hub.refresh = refresh;
+    throw new Error('Gladys answered 500');
+  };
+  const ack = await pairAll(world);
+  assert.equal(ack.data.message.en, 'Paired: HomeWizard P1 Meter a00001.');
+  await world.hub.store.flush();
+  const saved = JSON.parse(await readFile(join(world.dataDir, 'homewizard-state.json'), 'utf8'));
+  assert.match(saved.devices[SERIALS.P1_V2].token, /^[0-9A-F]{32}$/);
+});
+
+test('a new structure Gladys missed is published again at the next readings', async (t) => {
+  const meter = await fake({ model: 'HWE-P1-single-phase', serial: SERIALS.P1 });
+  const world = await createWorld({ devices: [meter] });
+  t.after(() => world.stop());
+  const publish = world.gladys.publishDiscoveredDevices.bind(world.gladys);
+  let failures = 1;
+  world.gladys.publishDiscoveredDevices = async (devices) => {
+    if (failures-- > 0) {
+      throw new Error('HTTP 503');
+    }
+    return publish(devices);
+  };
+  meter.data.external = [{ type: 'water_meter', value: 3.5, unit: 'm3' }];
+  await world.hub.pollAll().catch(() => {});
+  await world.hub.pollAll();
+  const ids = world.fake.discoveredDevices[0].features.map((feature) => feature.external_id);
+  assert.ok(ids.some((id) => id.endsWith(':water')));
+});
