@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-13
+
 ### Changed
 
 - Quieter logs: a problem that repeats at every reading (a device certificate
@@ -50,5 +52,6 @@ the notes of the version's GitHub Release.
   or off and to blink a device.
 - English, French, German and Spanish.
 
-[Unreleased]: https://github.com/guim31/gladys-homewizard/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/guim31/gladys-homewizard/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/guim31/gladys-homewizard/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/guim31/gladys-homewizard/releases/tag/v1.0.0
