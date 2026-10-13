@@ -105,6 +105,9 @@ export class HomeWizardHub {
     this.lastScan = { status: 'not-run', found: 0 };
     this.lastWidgetNudge = 0;
     this.devicesDirty = false;
+    // A failing mDNS scan, or timer work Gladys refuses: logged once, until it works again.
+    this.scanFailing = false;
+    this.backgroundFailing = false;
     // States sent in the last minute, for the budget: `[{ at, count }]`.
     this.spent = [];
     this.stopped = false;
@@ -169,11 +172,37 @@ export class HomeWizardHub {
     }
     clearInterval(this.pollTimer);
     clearInterval(this.rediscoveryTimer);
-    this.pollTimer = setInterval(() => this.track(this.pollAll()), this.config.pollSeconds * 1000);
+    this.pollTimer = setInterval(
+      () => this.track(this.timerTask(this.pollAll())),
+      this.config.pollSeconds * 1000,
+    );
     this.rediscoveryTimer = setInterval(
-      () => this.track(this.rediscover()),
+      () => this.track(this.timerTask(this.rediscover())),
       this.timings.rediscoveryMs,
     );
+  }
+
+  /**
+   * Work of the timers (readings, rediscovery): a failure (Gladys away, a
+   * publication refused) is logged once, then again when it works, not every
+   * 10 s.
+   */
+  async timerTask(promise) {
+    try {
+      await promise;
+    } catch (err) {
+      if (this.backgroundFailing) {
+        logger.debug(`Still failing: ${err.message}`);
+      } else {
+        this.backgroundFailing = true;
+        logger.warn(`Cannot update Gladys: ${err.message} (retried at the next readings)`);
+      }
+      return;
+    }
+    if (this.backgroundFailing) {
+      this.backgroundFailing = false;
+      logger.info('Gladys is updated again');
+    }
   }
 
   async stop() {
@@ -369,12 +398,22 @@ export class HomeWizardHub {
         await this.gladys.scanNetwork('mdns', { timeoutSeconds: SCAN_TIMEOUT_SECONDS }),
       );
       this.lastScan = { status: 'ok', found: found.length };
+      if (this.scanFailing) {
+        this.scanFailing = false;
+        logger.info('HomeWizard discovery through Gladys works again');
+      }
       return found;
     } catch (err) {
       // 403: a core without mediated discovery; 429 or 409: a scan ran less
       // than 10 s ago. The typed and known addresses still work.
       const status = err.status === 429 || err.status === 409 ? 'busy' : 'unavailable';
-      logger.warn(`HomeWizard discovery through Gladys failed: ${err.message}`);
+      if (status === 'busy' || this.scanFailing) {
+        // Busy is harmless; a lasting failure was said once (every 15 min otherwise).
+        logger.debug(`HomeWizard discovery through Gladys failed: ${err.message}`);
+      } else {
+        this.scanFailing = true;
+        logger.warn(`HomeWizard discovery through Gladys failed: ${err.message}`);
+      }
       this.lastScan = { status, found: 0 };
       return [];
     }
@@ -633,7 +672,13 @@ export class HomeWizardHub {
     this.polling ??= mapLimit([...this.records.values()], POLL_CONCURRENCY, (record) =>
       this.refresh(record),
     )
-      .then(async () => {
+      .then(async (results) => {
+        for (const { error } of results) {
+          if (error) {
+            // A state Gladys refused: sent again at the next readings.
+            logger.debug(`Reading not fully published: ${error.message}`);
+          }
+        }
         if (this.devicesDirty) {
           // A new structure Gladys did not get (a failed publication).
           await this.publishDevices();
@@ -735,7 +780,12 @@ export class HomeWizardHub {
         this.track(this.save());
         return;
       case 'tls':
-        logger.warn(`HomeWizard ${record.serial}: ${err.message}`);
+        // Said once: the device stays in error until a reading works again.
+        if (record.problem === 'tls') {
+          logger.debug(`HomeWizard ${record.serial}: ${err.message}`);
+        } else {
+          logger.warn(`HomeWizard ${record.serial}: ${err.message}`);
+        }
         await this.setProblem(record, 'tls');
         return;
       default:

@@ -19,6 +19,8 @@ export class Store {
     this.path = join(directory, FILE_NAME);
     this.pending = null;
     this.writing = null;
+    // A failing write is logged once, then again when writing works.
+    this.writeFailing = false;
   }
 
   async load() {
@@ -48,8 +50,17 @@ export class Store {
           // The file holds the v2 tokens: readable by the integration only.
           await writeFile(temporary, JSON.stringify(snapshot), { mode: 0o600 });
           await rename(temporary, this.path);
+          if (this.writeFailing) {
+            this.writeFailing = false;
+            logger.info(`${this.path} written again`);
+          }
         } catch (err) {
-          logger.warn(`Cannot write ${this.path}: ${err.message}`);
+          if (this.writeFailing) {
+            logger.debug(`Cannot write ${this.path}: ${err.message}`);
+          } else {
+            this.writeFailing = true;
+            logger.warn(`Cannot write ${this.path}: ${err.message}`);
+          }
         }
       });
       this.writing = this.pending;
