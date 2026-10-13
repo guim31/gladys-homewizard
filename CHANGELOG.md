@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-13
+
 ### Added
 
 - One Gladys device per HomeWizard Energy device on the local network: P1
@@ -40,4 +42,5 @@ the notes of the version's GitHub Release.
   or off and to blink a device.
 - English, French, German and Spanish.
 
-[Unreleased]: https://github.com/guim31/gladys-homewizard/commits/main
+[Unreleased]: https://github.com/guim31/gladys-homewizard/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/guim31/gladys-homewizard/releases/tag/v1.0.0
