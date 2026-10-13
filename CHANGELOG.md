@@ -10,6 +10,14 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Changed
+
+- Quieter logs: a problem that repeats at every reading (a device certificate
+  that is not HomeWizard, a discovery the Gladys core refuses, Gladys not
+  accepting updates, a data folder that cannot be written) is now logged once,
+  then once more when it is solved, instead of every 10 seconds or every 15
+  minutes.
+
 ## [1.0.0] - 2026-10-13
 
 ### Added
