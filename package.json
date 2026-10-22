@@ -1,6 +1,6 @@
 {
   "name": "gladys-homewizard",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Gladys Assistant integration for HomeWizard Energy devices (P1 Meter, Energy Socket, kWh meters, Watermeter, Plug-In Battery), over their local API.",
   "type": "module",

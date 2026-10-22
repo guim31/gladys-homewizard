@@ -8,8 +8,8 @@
     "de": "HomeWizard P1 Meter, Energy Socket, kWh-Zähler, Wasserzähler und Akku, im lokalen Netz gelesen.",
     "es": "Medidor P1, enchufe, medidores kWh, contador de agua y batería HomeWizard, leídos en la red local."
   },
-  "version": "1.0.1",
-  "docker_image": "ghcr.io/guim31/gladys-homewizard:1.0.1",
+  "version": "1.0.2",
+  "docker_image": "ghcr.io/guim31/gladys-homewizard:1.0.2",
   "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/guim31/gladys-homewizard/main/cover.png",
   "categories": ["energy"],
